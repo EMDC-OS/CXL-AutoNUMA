@@ -133,6 +133,10 @@ static unsigned int sysctl_sched_cfs_bandwidth_slice		= 5000UL;
 #ifdef CONFIG_NUMA_BALANCING
 /* Restrict the NUMA promotion throughput (MB/s) for each target node. */
 static unsigned int sysctl_numa_balancing_promote_rate_limit = 65536;
+
+/* Based on the NUMA promotion throughput (MB/s) set here, the threshold value that determines a hot page is dynamically determined. */
+static unsigned int sysctl_numa_balancing_promote_throughput = 3;
+
 #endif
 
 #ifdef CONFIG_SYSCTL
@@ -156,6 +160,14 @@ static struct ctl_table sched_fair_sysctls[] = {
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= SYSCTL_ZERO,
 	},
+	{
+        .procname   = "numa_balancing_promote_throughput_MBps",
+        .data       = &sysctl_numa_balancing_promote_throughput,
+        .maxlen     = sizeof(unsigned int),
+        .mode       = 0644,
+        .proc_handler = proc_dointvec_minmax,
+        .extra1     = SYSCTL_ZERO,
+    },
 #endif /* CONFIG_NUMA_BALANCING */
 	{}
 };
@@ -1797,7 +1809,7 @@ static bool numa_promotion_rate_limit(struct pglist_data *pgdat,
 #define NUMA_MIGRATION_ADJUST_STEPS	16
 
 static void numa_promotion_adjust_threshold(struct pglist_data *pgdat,
-					    unsigned long rate_limit,
+					    unsigned long promotion_throughput,
 					    unsigned int ref_th)
 {
 	unsigned int now, start, th_period, unit_th, th;
@@ -1808,7 +1820,7 @@ static void numa_promotion_adjust_threshold(struct pglist_data *pgdat,
 	start = pgdat->nbp_th_start;
 	if (now - start > th_period &&
 	    cmpxchg(&pgdat->nbp_th_start, start, now) == start) {
-		ref_cand = rate_limit *
+		ref_cand = promotion_throughput *
 			sysctl_numa_balancing_scan_period_max / MSEC_PER_SEC;
 		nr_cand = node_page_state(pgdat, PGPROMOTE_CANDIDATE);
 		diff_cand = nr_cand - pgdat->nbp_th_nr_cand;
@@ -1840,6 +1852,7 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 	    !node_is_toptier(src_nid)) {
 		struct pglist_data *pgdat;
 		unsigned long rate_limit;
+		unsigned long promotion_throughput;
 		unsigned int latency, th, def_th;
 
 		pgdat = NODE_DATA(dst_nid);
@@ -1850,15 +1863,18 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 		}
 
 		def_th = sysctl_numa_balancing_hot_threshold;
-		rate_limit = sysctl_numa_balancing_promote_rate_limit << \
+		promotion_throughput = sysctl_numa_balancing_promote_throughput << \
 			(20 - PAGE_SHIFT);
-		numa_promotion_adjust_threshold(pgdat, rate_limit, def_th);
+		
+		numa_promotion_adjust_threshold(pgdat, promotion_throughput, def_th);
 
 		th = pgdat->nbp_threshold ? : def_th;
 		latency = numa_hint_fault_latency(folio);
 		if (latency >= th)
 			return false;
 
+		rate_limit = sysctl_numa_balancing_promote_rate_limit << \
+			(20 - PAGE_SHIFT);
 		return !numa_promotion_rate_limit(pgdat, rate_limit,
 						  folio_nr_pages(folio));
 	}
