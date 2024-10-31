@@ -1815,23 +1815,10 @@ static void numa_promotion_adjust_threshold(struct pglist_data *pgdat,
 		unit_th = ref_th * 2 / NUMA_MIGRATION_ADJUST_STEPS;
 		th = pgdat->nbp_threshold ? : ref_th;
 
-		/* 기존 threshold 계산 로직 주석 처리 */
-		// if (diff_cand > ref_cand * 11 / 10)
-		// 	th = max(th - unit_th, unit_th);
-		// else if (diff_cand < ref_cand * 9 / 10)
-		// 	th = min(th + unit_th, ref_th * 2);
-
-		// /* th 값을 고정된 500으로 설정 */
-		// th = 500;
-
-		// /* th 값을 고정된 250으로 설정 */
-		// th = 250;
-
-		/* th 값을 고정된 100으로 설정 */
-		// th = 100;
-
-		/* th 값을 고정된 1000으로 설정 */
-		th = 1000;
+		if (diff_cand > ref_cand * 11 / 10)
+			th = max(th - unit_th, unit_th);
+		else if (diff_cand < ref_cand * 9 / 10)
+			th = min(th + unit_th, ref_th * 2);
 		
 		pgdat->nbp_th_nr_cand = nr_cand;
 		pgdat->nbp_threshold = th;
