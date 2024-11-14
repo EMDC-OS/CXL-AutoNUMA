@@ -20,11 +20,6 @@
  */
 #define MEMTIER_ADISTANCE_DRAM	((4 * MEMTIER_CHUNK_SIZE) + (MEMTIER_CHUNK_SIZE >> 1))
 
-/*
- * CXL 에뮬레이션 노드를 위한 가상거리 설정
- */
-#define MEMTIER_ADISTANCE_CXL  (MEMTIER_ADISTANCE_DRAM * 5)
-
 struct memory_tier;
 struct memory_dev_type {
 	/* list of memory types that are part of same tier as this type */
@@ -143,4 +138,3 @@ static inline int mt_perf_to_adistance(struct access_coordinate *perf, int *adis
 }
 #endif	/* CONFIG_NUMA */
 #endif  /* _LINUX_MEMORY_TIERS_H */
-

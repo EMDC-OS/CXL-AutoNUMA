@@ -39,9 +39,6 @@ static LIST_HEAD(memory_tiers);
 static struct node_memory_type_map node_memory_types[MAX_NUMNODES];
 struct memory_dev_type *default_dram_type;
 
-/* memory_dev_type 으로 CXL을 새로 생성 */
-static struct memory_dev_type *default_cxl_type;
-
 static struct bus_type memory_tier_subsys = {
 	.name = "memory_tiering",
 	.dev_name = "memory_tier",
@@ -250,38 +247,29 @@ static struct memory_tier *__node_get_memory_tier(int node)
 }
 
 #ifdef CONFIG_MIGRATION
-/*
- * node_is_toptier 함수 호출 시 모든 노드에 대해 true로 반환되는 문제 해결을 위한 코드 수정.
- * 현재 실험환경에서 DRAM을 나타내는 노드는 0, CXL을 나타내는 노드가 1
- */
 bool node_is_toptier(int node)
 {
-// 	bool toptier;
-// 	pg_data_t *pgdat;
-// 	struct memory_tier *memtier;
+	bool toptier;
+	pg_data_t *pgdat;
+	struct memory_tier *memtier;
 
-// 	pgdat = NODE_DATA(node);
-// 	if (!pgdat)
-// 		return false;
-
-// 	rcu_read_lock();
-// 	memtier = rcu_dereference(pgdat->memtier);
-// 	if (!memtier) {
-// 		toptier = true;
-// 		goto out;
-// 	}
-// 	if (memtier->adistance_start <= top_tier_adistance)
-// 		toptier = true;
-// 	else
-// 		toptier = false;
-// out:
-// 	rcu_read_unlock();
-// 	return toptier;
-	
-	if (node == 0)
-		return true;
-	else
+	pgdat = NODE_DATA(node);
+	if (!pgdat)
 		return false;
+
+	rcu_read_lock();
+	memtier = rcu_dereference(pgdat->memtier);
+	if (!memtier) {
+		toptier = true;
+		goto out;
+	}
+	if (memtier->adistance_start <= top_tier_adistance)
+		toptier = true;
+	else
+		toptier = false;
+out:
+	rcu_read_unlock();
+	return toptier;
 }
 
 void node_get_allowed_targets(pg_data_t *pgdat, nodemask_t *targets)
@@ -504,16 +492,7 @@ static struct memory_tier *set_node_memory_tier(int node)
 	if (!node_state(node, N_MEMORY))
 		return ERR_PTR(-EINVAL);
 
-	/*
- 	 * CXL 에뮬레이션 노드를 위한 메모리 타입 init 설정
-	 * Node 0 : DRAM Node
-	 * Node 1 : CXL-Emulated-Node
-	 */
-	// __init_node_memory_type(node, default_dram_type);
-	if (node < 1)
- 		__init_node_memory_type(node, default_dram_type);
-	else
-		__init_node_memory_type(node, default_cxl_type);
+	__init_node_memory_type(node, default_dram_type);
 
 	memtype = node_memory_types[node].memtype;
 	node_set(node, memtype->nodes);
@@ -828,13 +807,6 @@ static int __init memory_tier_init(void)
 	default_dram_type = alloc_memory_type(MEMTIER_ADISTANCE_DRAM);
 	if (IS_ERR(default_dram_type))
 		panic("%s() failed to allocate default DRAM tier\n", __func__);
-
-	/*
-	 * CXL 메모리 타입에 대한 메모리 티어 할당을 위한 코드 추가
-	 */
-	default_cxl_type = alloc_memory_type(MEMTIER_ADISTANCE_CXL);
-	if (IS_ERR(default_cxl_type))
-		panic("%s() failed to allocate default CXL tier\n", __func__);
 
 	/*
 	 * Look at all the existing N_MEMORY nodes and add them to
