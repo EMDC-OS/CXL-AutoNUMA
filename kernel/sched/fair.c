@@ -1745,8 +1745,9 @@ static bool pgdat_free_space_enough(struct pglist_data *pgdat)
 	int z;
 	unsigned long enough_wmark;
 
-	enough_wmark = max(1UL * 1024 * 1024 * 1024 >> PAGE_SHIFT,
-			   pgdat->node_present_pages >> 4);
+	// Free Page 가 충분하다고 판단해, threshold 고려 없이 page promotion이 일어나는 현상 억제를 위한 기준값 수정 
+	enough_wmark = max(2UL * 1024 * 1024 * 1024 >> PAGE_SHIFT,
+			   pgdat->node_present_pages >> 3);
 	for (z = pgdat->nr_zones - 1; z >= 0; z--) {
 		struct zone *zone = pgdat->node_zones + z;
 
