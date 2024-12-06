@@ -1857,11 +1857,11 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 		unsigned int latency, th, def_th;
 
 		pgdat = NODE_DATA(dst_nid);
-		if (pgdat_free_space_enough(pgdat)) {
-			/* workload changed, reset hot threshold */
-			pgdat->nbp_threshold = 0;
-			return true;
-		}
+		// if (pgdat_free_space_enough(pgdat)) {
+		// 	/* workload changed, reset hot threshold */
+		// 	pgdat->nbp_threshold = 0;
+		// 	return true;
+		// }
 
 		def_th = sysctl_numa_balancing_hot_threshold;
 		promotion_throughput = sysctl_numa_balancing_promote_throughput << \
