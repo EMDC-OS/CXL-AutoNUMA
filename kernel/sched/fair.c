@@ -135,7 +135,7 @@ static unsigned int sysctl_sched_cfs_bandwidth_slice		= 5000UL;
 static unsigned int sysctl_numa_balancing_promote_rate_limit = 65536;
 
 /* Based on the NUMA promotion throughput (MB/s) set here, the threshold value that determines a hot page is dynamically determined. */
-static unsigned int sysctl_numa_balancing_promote_throughput = 3;
+static unsigned int sysctl_numa_balancing_promote_throughput = 1;
 
 #endif
 
