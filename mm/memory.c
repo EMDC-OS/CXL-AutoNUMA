@@ -4916,9 +4916,10 @@ static vm_fault_t do_fault(struct vm_fault *vmf)
 // 	return mpol_misplaced(folio, vma, addr);
 // }
 
+
 #include <linux/jiffies.h>
 
-#define LOG_INTERVAL 1000  // 1000번 호출당 한 번만 출력
+#define LOG_INTERVAL 100000  // 100000번 호출당 한 번만 출력
 
 int numa_migrate_prep(struct folio *folio, struct vm_area_struct *vma,
 		      unsigned long addr, int page_nid, int *flags)
@@ -4934,7 +4935,12 @@ int numa_migrate_prep(struct folio *folio, struct vm_area_struct *vma,
 
 	// LOG_INTERVAL 주기마다 로그 출력
 	if ((++counter % LOG_INTERVAL) == 0) {
-		pr_info("n: %d, c: %d\n", page_nid, numa_node_id());
+		pr_info("node 0: %d\n", node_is_toptier(0));
+		pr_info("node 1: %d\n", node_is_toptier(1));
+		pr_info("node 2: %d\n", node_is_toptier(2));
+		pr_info("node 3: %d\n", node_is_toptier(3));
+		pr_info("node 4: %d\n", node_is_toptier(4));
+		pr_info("node 5: %d\n\n", node_is_toptier(5));
 	}
 
 	if (page_nid == numa_node_id()) {
@@ -4944,6 +4950,36 @@ int numa_migrate_prep(struct folio *folio, struct vm_area_struct *vma,
 
 	return mpol_misplaced(folio, vma, addr);
 }
+
+
+// #include <linux/jiffies.h>
+
+// #define LOG_INTERVAL 1000  // 1000번 호출당 한 번만 출력
+
+// int numa_migrate_prep(struct folio *folio, struct vm_area_struct *vma,
+// 		      unsigned long addr, int page_nid, int *flags)
+// {
+// 	static int counter = 0;
+
+// 	folio_get(folio);
+
+// 	/* Record the current PID accessing VMA */
+// 	vma_set_access_pid_bit(vma);
+
+// 	count_vm_numa_event(NUMA_HINT_FAULTS);
+
+// 	// LOG_INTERVAL 주기마다 로그 출력
+// 	if ((++counter % LOG_INTERVAL) == 0) {
+// 		pr_info("n: %d, c: %d\n", page_nid, numa_node_id());
+// 	}
+
+// 	if (page_nid == numa_node_id()) {
+// 		count_vm_numa_event(NUMA_HINT_FAULTS_LOCAL);
+// 		*flags |= TNF_FAULT_LOCAL;
+// 	}
+
+// 	return mpol_misplaced(folio, vma, addr);
+// }
 
 
 static vm_fault_t do_numa_page(struct vm_fault *vmf)
