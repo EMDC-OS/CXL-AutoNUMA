@@ -4899,22 +4899,22 @@ static vm_fault_t do_fault(struct vm_fault *vmf)
 	return ret;
 }
 
-// int numa_migrate_prep(struct folio *folio, struct vm_area_struct *vma,
-// 		      unsigned long addr, int page_nid, int *flags)
-// {
-// 	folio_get(folio);
+int numa_migrate_prep(struct folio *folio, struct vm_area_struct *vma,
+		      unsigned long addr, int page_nid, int *flags)
+{
+	folio_get(folio);
 
-// 	/* Record the current PID acceesing VMA */
-// 	vma_set_access_pid_bit(vma);
+	/* Record the current PID acceesing VMA */
+	vma_set_access_pid_bit(vma);
 
-// 	count_vm_numa_event(NUMA_HINT_FAULTS);
-// 	if (page_nid == numa_node_id()) {
-// 		count_vm_numa_event(NUMA_HINT_FAULTS_LOCAL);
-// 		*flags |= TNF_FAULT_LOCAL;
-// 	}
+	count_vm_numa_event(NUMA_HINT_FAULTS);
+	if (page_nid == numa_node_id()) {
+		count_vm_numa_event(NUMA_HINT_FAULTS_LOCAL);
+		*flags |= TNF_FAULT_LOCAL;
+	}
 
-// 	return mpol_misplaced(folio, vma, addr);
-// }
+	return mpol_misplaced(folio, vma, addr);
+}
 
 
 // #include <linux/jiffies.h>
