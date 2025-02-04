@@ -2692,6 +2692,7 @@ static void numa_group_count_active_nodes(struct numa_group *numa_group)
 /**
  * NUMA 스캔 주기 고정 코드
 */
+#include <linux/printk.h>
 static void update_task_scan_period(struct task_struct *p,
 			unsigned long shared, unsigned long private)
 {
@@ -2701,6 +2702,8 @@ static void update_task_scan_period(struct task_struct *p,
 
 	unsigned long remote = p->numa_faults_locality[0];
 	unsigned long local = p->numa_faults_locality[1];
+
+	printk(KERN_INFO "PID: %d, Scan Period: %lu\n", p->pid, p->numa_scan_period);
 
 	/*
 	 * If there were no record hinting faults then either the task is
