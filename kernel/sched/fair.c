@@ -3739,6 +3739,8 @@ static void update_scan_period(struct task_struct *p, int new_cpu)
 	}
 
 	p->numa_scan_period = task_scan_start(p);
+	/* 스캔 주기를 1000으로 고정 */
+	p->numa_scan_period = 1000;
 }
 
 #else
