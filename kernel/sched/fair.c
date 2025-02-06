@@ -1451,7 +1451,13 @@ static unsigned int task_scan_min(struct task_struct *p)
 	floor = 1000 / windows;
 
 	scan = sysctl_numa_balancing_scan_period_min / task_nr_scan_windows(p);
-	return max_t(unsigned int, floor, scan);
+	// return max_t(unsigned int, floor, scan);
+
+	/* scan 값이 1000보다 작으면 강제 수정 */
+    scan = max_t(unsigned int, floor, scan);
+    scan = max(scan, 1000);  
+
+    return scan;
 }
 
 static unsigned int task_scan_start(struct task_struct *p)
@@ -3698,8 +3704,13 @@ static void task_tick_numa(struct rq *rq, struct task_struct *curr)
 	period = (u64)curr->numa_scan_period * NSEC_PER_MSEC;
 
 	if (now > curr->node_stamp + period) {
+		// if (!curr->node_stamp)
+		// 	curr->numa_scan_period = task_scan_start(curr);
+
+		/* 스캔 주기를 1000으로 고정 */
 		if (!curr->node_stamp)
-			curr->numa_scan_period = task_scan_start(curr);
+			curr->numa_scan_period = 1000;
+
 		curr->node_stamp += period;
 
 		if (!time_before(jiffies, curr->mm->numa_next_scan))
