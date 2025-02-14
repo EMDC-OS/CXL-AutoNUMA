@@ -1855,6 +1855,11 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 		unsigned long promotion_throughput;
 		unsigned int latency, th, def_th;
 
+		/* Count the pages where a hint fault occurred and the `hint_fault_latency` is 1000ms or less */
+		latency = numa_hint_fault_latency(folio);
+		if (latency <= 1000)
+			count_vm_numa_event(NUMA_HINT_FAULTS_HOT);
+
 		pgdat = NODE_DATA(dst_nid);
 		if (pgdat_free_space_enough(pgdat)) {
 			/* workload changed, reset hot threshold */
@@ -1869,7 +1874,7 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 		numa_promotion_adjust_threshold(pgdat, promotion_throughput, def_th);
 
 		th = pgdat->nbp_threshold ? : def_th;
-		latency = numa_hint_fault_latency(folio);
+		
 		if (latency >= th)
 			return false;
 
