@@ -1775,56 +1775,61 @@ static bool pgdat_free_space_enough(struct pglist_data *pgdat)
  */
 static int numa_hint_fault_latency(struct folio *folio)
 {
-        static unsigned long lat_sum;              /* 누적 지연시간 합계 */
-        static unsigned long lat_count;            /* 누적 지연시간 측정 횟수 */
-        static unsigned long lat_record_start_jiffies; /* 누적을 시작한 jiffies 시간 */
+	static unsigned long lat_sum;              /* 누적 지연시간 합계 */
+	static unsigned long lat_count;            /* 누적 지연시간 측정 횟수 */
+	static unsigned long lat_record_start_jiffies; /* 누적을 시작한 jiffies 시간 */
 
-        int last_time, time, latency;
+	int last_time, time, latency;
 
-        time = jiffies_to_msecs(jiffies);
-        last_time = folio_xchg_access_time(folio, time);
+	time = jiffies_to_msecs(jiffies);
+	last_time = folio_xchg_access_time(folio, time);
 
-        /* 이번에 측정된 latency(ms) */
-        latency = (time - last_time) & PAGE_ACCESS_TIME_MASK;
+	/* 이번에 측정된 latency(ms) */
+	latency = (time - last_time) & PAGE_ACCESS_TIME_MASK;
 
-        /*
-         * NUMA_BALANCING_MEMORY_TIERING 모드에서만
-         * 1분간의 평균 latency를 누적/계산.
-         */
-        if (sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING) {
-                unsigned long now_jiffies = jiffies;
+	/*
+	* NUMA_BALANCING_MEMORY_TIERING 모드에서만
+	* 1분간의 평균 latency를 누적/계산.
+	*/
+	if (sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING) {
+		unsigned long now_jiffies = jiffies;
 
-                /* 기록 시작 시점이 0이라면, 지금 jiffies로 초기화 */
-                if (!lat_record_start_jiffies)
-                        lat_record_start_jiffies = now_jiffies;
+		/* 기록 시작 시점이 0이라면, 지금 jiffies로 초기화 */
+		if (!lat_record_start_jiffies)
+				lat_record_start_jiffies = now_jiffies;
 
-                /* 누적 계산 */
-                lat_sum += latency;
-                lat_count++;
+		/* 누적 계산 */
+		// lat_sum += latency;
+		// lat_count++;
 
-                /*
-                 * jiffies를 이용해 60초가 지났는지 확인.
-                 * 60초(60000ms)를 jiffies로 변환: msecs_to_jiffies(60000).
-                 */
-                if (time_after(now_jiffies,
-                               lat_record_start_jiffies + msecs_to_jiffies(60000))) {
-                        unsigned long avg_latency = 0;
+		/* hint fault latency 10000ms 이하인 페이지인 경우에만 누적 계산 */
+		if (latency <= 10000) {
+			lat_sum += latency;
+			lat_count++;
+		}
 
-                        if (lat_count)
-                                avg_latency = div64_u64(lat_sum, lat_count);
+		/*
+		* jiffies를 이용해 60초가 지났는지 확인.
+		* 60초(60000ms)를 jiffies로 변환: msecs_to_jiffies(60000).
+		*/
+		if (time_after(now_jiffies, lat_record_start_jiffies + msecs_to_jiffies(60000))) {
+			unsigned long avg_latency = 0;
 
-                        /* 1분 평균 latency를 커널 로그로 출력(또는 저장) */
-                        pr_info("NUMA Memory Tiering: avg latency for last 60s = %lu ms\n",
-                                avg_latency);
+			if (lat_count)
+					avg_latency = div64_u64(lat_sum, lat_count);
 
-                        /* 다시 초기화 */
-                        lat_sum = 0;
-                        lat_count = 0;
-                        lat_record_start_jiffies = now_jiffies;
-                }
-        }
+			/* 1분 평균 latency를 커널 로그로 출력(또는 저장) */
+			pr_info("NUMA Memory Tiering: avg latency for last 60s = %lu ms\n",
+					avg_latency);
 
-        return latency;
+			/* 다시 초기화 */
+			lat_sum = 0;
+			lat_count = 0;
+			lat_record_start_jiffies = now_jiffies;
+		}
+	}
+
+	return latency;
 }
 
 /*
