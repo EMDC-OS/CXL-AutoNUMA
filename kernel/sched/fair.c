@@ -1802,8 +1802,8 @@ static int numa_hint_fault_latency(struct folio *folio)
 		// lat_sum += latency;
 		// lat_count++;
 
-		/* hint fault latency 10000ms 이하인 페이지인 경우에만 누적 계산 */
-		if (latency <= 10000) {
+		/* hint fault latency 100000ms 이하인 페이지인 경우에만 누적 계산 */
+		if (latency <= 100000) {
 			lat_sum += latency;
 			lat_count++;
 		}
@@ -1816,11 +1816,10 @@ static int numa_hint_fault_latency(struct folio *folio)
 			unsigned long avg_latency = 0;
 
 			if (lat_count)
-					avg_latency = div64_u64(lat_sum, lat_count);
+				avg_latency = div64_u64(lat_sum, lat_count);
 
 			/* 1분 평균 latency를 커널 로그로 출력(또는 저장) */
-			pr_info("NUMA Memory Tiering: avg latency for last 60s = %lu ms\n",
-					avg_latency);
+			pr_info("NUMA Memory Tiering: avg latency for last 60s = %lu ms\n", avg_latency);
 
 			/* 다시 초기화 */
 			lat_sum = 0;
