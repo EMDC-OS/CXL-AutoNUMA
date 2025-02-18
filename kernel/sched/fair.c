@@ -3433,10 +3433,13 @@ out:
 	 * would find the !migratable VMA on the next scan but not reset the
 	 * scanner to the start so check it now.
 	 */
-	if (vma)
+	if (vma) {
 		mm->numa_scan_offset = start;
-	else
+	}
+	else {
+		pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max);
 		reset_ptenuma_scan(p);
+	}
 	mmap_read_unlock(mm);
 
 	/*
