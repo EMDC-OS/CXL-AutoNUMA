@@ -3171,6 +3171,7 @@ static void reset_ptenuma_scan(struct task_struct *p)
 	 * statistical sampling. Use READ_ONCE/WRITE_ONCE, which are not
 	 * expensive, to avoid any form of compiler optimizations:
 	 */
+	pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max);
 	WRITE_ONCE(p->mm->numa_scan_seq, READ_ONCE(p->mm->numa_scan_seq) + 1);
 	p->mm->numa_scan_offset = 0;
 }
@@ -3386,6 +3387,8 @@ retry_pids:
 			end = min(end, vma->vm_end);
 			nr_pte_updates = change_prot_numa(vma, start, end);
 
+			pr_info("nr_pte_updates: pid=%d, comm=%s, ptes=%lu\n", p->pid, p->comm, nr_pte_updates);
+
 			/*
 			 * Try to scan sysctl_numa_balancing_size worth of
 			 * hpages that have at least one present PTE that
@@ -3435,9 +3438,9 @@ out:
 	 */
 	if (vma) {
 		mm->numa_scan_offset = start;
+		pr_info("NUMA scan: pid=%d, comm=%s, seq=%d, period=%u, max=%u\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max);
 	}
 	else {
-		pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max);
 		reset_ptenuma_scan(p);
 	}
 	mmap_read_unlock(mm);
