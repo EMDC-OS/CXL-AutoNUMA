@@ -3171,7 +3171,11 @@ static void reset_ptenuma_scan(struct task_struct *p)
 	 * statistical sampling. Use READ_ONCE/WRITE_ONCE, which are not
 	 * expensive, to avoid any form of compiler optimizations:
 	 */
-	pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max);
+	unsigned long numa_hint_faults = global_node_page_state(NUMA_HINT_FAULTS);
+	unsigned long numa_pte_updates = global_node_page_state(NUMA_PTE_UPDATES);
+
+	pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u, hf=%lu, pte=%lu\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max, numa_hint_faults, numa_pte_updates);
+	
 	WRITE_ONCE(p->mm->numa_scan_seq, READ_ONCE(p->mm->numa_scan_seq) + 1);
 	p->mm->numa_scan_offset = 0;
 }
