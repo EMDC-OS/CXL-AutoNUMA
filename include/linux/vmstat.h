@@ -85,6 +85,18 @@ extern void all_vm_events(unsigned long *);
 
 extern void vm_events_fold_cpu(int cpu);
 
+static inline unsigned long global_vm_event_state(enum vm_event_item item)
+{
+	unsigned long sum = 0;
+	int cpu;
+
+	for_each_online_cpu(cpu) {
+		sum += per_cpu(vm_event_states, cpu).event[item];
+	}
+
+	return sum;
+}
+
 #else
 
 /* Disable counters */
