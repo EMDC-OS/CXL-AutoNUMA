@@ -1857,7 +1857,7 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 
 		/* Count the pages where a hint fault occurred and the `hint_fault_latency` is 1000ms or less */
 		latency = numa_hint_fault_latency(folio);
-		if (latency <= 10000)
+		if (latency <= 1000)
 			count_vm_numa_event(NUMA_HINT_FAULTS_HOT);
 
 		pgdat = NODE_DATA(dst_nid);
@@ -3178,8 +3178,9 @@ static void reset_ptenuma_scan(struct task_struct *p)
 	 */
 	unsigned long numa_hint_faults = global_vm_event_state(NUMA_HINT_FAULTS);
 	unsigned long numa_hint_faults_hot = global_vm_event_state(NUMA_HINT_FAULTS_HOT);
+	unsigned long numa_pte_updates = global_vm_event_state(NUMA_PTE_UPDATES);
 
-	pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u, hothf=%lu, hf=%lu\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max, numa_hint_faults_hot, numa_hint_faults);
+	pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u, hothf=%lu, hf=%lu, pte=%lu\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max, numa_hint_faults_hot, numa_hint_faults, numa_pte_updates);
 	
 	WRITE_ONCE(p->mm->numa_scan_seq, READ_ONCE(p->mm->numa_scan_seq) + 1);
 	p->mm->numa_scan_offset = 0;
@@ -3396,8 +3397,6 @@ retry_pids:
 			end = min(end, vma->vm_end);
 			nr_pte_updates = change_prot_numa(vma, start, end);
 
-			pr_info("nr_pte_updates: pid=%d, comm=%s, ptes=%lu\n", p->pid, p->comm, nr_pte_updates);
-
 			/*
 			 * Try to scan sysctl_numa_balancing_size worth of
 			 * hpages that have at least one present PTE that
@@ -3447,7 +3446,6 @@ out:
 	 */
 	if (vma) {
 		mm->numa_scan_offset = start;
-		pr_info("NUMA scan: pid=%d, comm=%s, seq=%d, period=%u, max=%u\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max);
 	}
 	else {
 		reset_ptenuma_scan(p);
