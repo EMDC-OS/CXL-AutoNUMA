@@ -1857,7 +1857,7 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 
 		/* Count the pages where a hint fault occurred and the `hint_fault_latency` is 1000ms or less */
 		latency = numa_hint_fault_latency(folio);
-		if (latency <= 1000)
+		if (latency <= 10000)
 			count_vm_numa_event(NUMA_HINT_FAULTS_HOT);
 
 		pgdat = NODE_DATA(dst_nid);
