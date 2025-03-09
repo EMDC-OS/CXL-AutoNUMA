@@ -2882,6 +2882,7 @@ static void task_numa_placement(struct task_struct *p)
 			p->numa_faults[cpu_idx] += f_diff;
 			faults += p->numa_faults[mem_idx];
 			p->total_numa_faults += diff;
+			p->numa_faults_seq += diff;
 			if (ng) {
 				/*
 				 * safe because we can only change our own group
@@ -3180,10 +3181,12 @@ static void reset_ptenuma_scan(struct task_struct *p)
 	unsigned long numa_hint_faults_hot = global_vm_event_state(NUMA_HINT_FAULTS_HOT);
 	unsigned long numa_pte_updates = global_vm_event_state(NUMA_PTE_UPDATES);
 
-	pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u, hothf=%lu, hf=%lu, pte=%lu\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max, numa_hint_faults_hot, numa_hint_faults, numa_pte_updates);
+	// pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u, hothf=%lu, hf=%lu, pte=%lu\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max, numa_hint_faults_hot, numa_hint_faults, numa_pte_updates);
+	pr_info("NUMA scan reset: pid=%d, comm=%s, seqmm=%d, seq=%d, period=%u, max=%u, hothf=%lu, hf=%lu, hfseq=%lu, pte=%lu\n", p->pid, p->comm, p->mm->numa_scan_seq, p->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max, numa_hint_faults_hot, numa_hint_faults, p->numa_faults_seq, numa_pte_updates);
 	
 	WRITE_ONCE(p->mm->numa_scan_seq, READ_ONCE(p->mm->numa_scan_seq) + 1);
 	p->mm->numa_scan_offset = 0;
+	p->numa_faults_seq = 0;
 }
 
 static bool vma_is_accessed(struct mm_struct *mm, struct vm_area_struct *vma)

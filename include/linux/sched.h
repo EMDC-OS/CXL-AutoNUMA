@@ -1299,6 +1299,7 @@ struct task_struct {
 	 */
 	unsigned long			*numa_faults;
 	unsigned long			total_numa_faults;
+	unsigned long			numa_faults_seq;
 
 	/*
 	 * numa_faults_locality tracks if faults recorded during the last
