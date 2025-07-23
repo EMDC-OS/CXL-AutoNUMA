@@ -335,6 +335,11 @@ struct mem_cgroup {
 	struct lru_gen_mm_list mm_list;
 #endif
 
+#ifdef CONFIG_NUMA_BALANCING
+	atomic_long_t memcg_numa_hint_faults;
+	atomic_long_t memcg_numa_hint_faults_hot;
+#endif
+
 	struct mem_cgroup_per_node *nodeinfo[];
 };
 

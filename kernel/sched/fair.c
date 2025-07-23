@@ -48,6 +48,7 @@
 #include <linux/ratelimit.h>
 #include <linux/task_work.h>
 #include <linux/rbtree_augmented.h>
+#include <linux/memcontrol.h>
 
 #include <asm/switch_to.h>
 
@@ -1854,6 +1855,16 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 		unsigned long rate_limit;
 		unsigned long promotion_throughput;
 		unsigned int latency, th, def_th;
+		struct mem_cgroup *memcg;
+		memcg = get_mem_cgroup_from_current();
+
+		/* Count the pages where a hint fault occurred and the `hint_fault_latency` is 1000ms or less */
+		latency = numa_hint_fault_latency(folio);
+		if (latency <= 1000) {
+			count_vm_numa_event(NUMA_HINT_FAULTS_HOT);
+			atomic_long_inc(&memcg->memcg_numa_hint_faults_hot);
+		}
+ 			
 
 		pgdat = NODE_DATA(dst_nid);
 		if (pgdat_free_space_enough(pgdat)) {
@@ -1869,7 +1880,6 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 		numa_promotion_adjust_threshold(pgdat, promotion_throughput, def_th);
 
 		th = pgdat->nbp_threshold ? : def_th;
-		latency = numa_hint_fault_latency(folio);
 		if (latency >= th)
 			return false;
 
@@ -2635,8 +2645,10 @@ static void update_task_scan_period(struct task_struct *p,
 	 * node is overloaded. In either case, scan slower
 	 */
 	if (local + shared == 0 || p->numa_faults_locality[2]) {
+		pr_info("#1: %s: prev_period %u, prev_max %u ", p->comm, p->numa_scan_period, p->numa_scan_period_max);
 		p->numa_scan_period = min(p->numa_scan_period_max,
 			p->numa_scan_period << 1);
+		pr_info("#1: %s: curr_period %u, curr_max %u ", p->comm, p->numa_scan_period, p->numa_scan_period_max);
 
 		p->mm->numa_next_scan = jiffies +
 			msecs_to_jiffies(p->numa_scan_period);
@@ -2682,9 +2694,10 @@ static void update_task_scan_period(struct task_struct *p,
 		int ratio = max(lr_ratio, ps_ratio);
 		diff = -(NUMA_PERIOD_THRESHOLD - ratio) * period_slot;
 	}
-
+	pr_info("#2: %s: prev_period %u, prev_max %u ", p->comm, p->numa_scan_period, p->numa_scan_period_max);
 	p->numa_scan_period = clamp(p->numa_scan_period + diff,
 			task_scan_min(p), task_scan_max(p));
+	pr_info("#2: %s: curr_period %u, curr_max %u ", p->comm, p->numa_scan_period, p->numa_scan_period_max);
 	memset(p->numa_faults_locality, 0, sizeof(p->numa_faults_locality));
 }
 
@@ -3163,6 +3176,29 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 
 static void reset_ptenuma_scan(struct task_struct *p)
 {
+	struct mem_cgroup *memcg;
+
+ 	unsigned long numa_pte_updates = global_vm_event_state(NUMA_PTE_UPDATES);
+
+	memcg = get_mem_cgroup_from_current();
+
+	long hfcrg = 0;
+	long hfhotcrg = 0;
+	int crgid = 0;
+	if (memcg) {
+		hfcrg = atomic_long_read(&memcg->memcg_numa_hint_faults);
+		hfhotcrg = atomic_long_read(&memcg->memcg_numa_hint_faults_hot);
+		crgid = memcg->id.id;
+	}
+
+	 pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u, cgrid=%d, hfcrg=%ld, hfhotcrg=%ld, pte=%lu\n", p->pid, p->comm, p->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max, crgid, hfcrg, hfhotcrg, numa_pte_updates);
+	
+	struct numa_group *ng;
+	ng = deref_curr_numa_group(p);
+	unsigned long shared = group_faults_shared(ng);
+	unsigned long private = group_faults_priv(ng);
+	pr_info("max: %s: gid=%d, sh=%lu pri=%lu\n", p->comm, ng->gid, shared, private);
+	
 	/*
 	 * We only did a read acquisition of the mmap sem, so
 	 * p->mm->numa_scan_seq is written to without exclusive access
@@ -3173,6 +3209,16 @@ static void reset_ptenuma_scan(struct task_struct *p)
 	 */
 	WRITE_ONCE(p->mm->numa_scan_seq, READ_ONCE(p->mm->numa_scan_seq) + 1);
 	p->mm->numa_scan_offset = 0;
+
+	/*
+	 * Reset the memcg_numa_hint_faults for the memcg to avoid double counting
+	 * the faults in the next scan sequence.
+	 */
+	
+	if (memcg) {
+		atomic_long_set(&memcg->memcg_numa_hint_faults, 0);
+		atomic_long_set(&memcg->memcg_numa_hint_faults_hot, 0);
+	}
 }
 
 static bool vma_is_accessed(struct mm_struct *mm, struct vm_area_struct *vma)
@@ -3252,6 +3298,7 @@ static void task_numa_work(struct callback_head *work)
 	if (p->numa_scan_period == 0) {
 		p->numa_scan_period_max = task_scan_max(p);
 		p->numa_scan_period = task_scan_start(p);
+		pr_info("#3: %s: curr_period %u, curr_max %u ", p->comm, p->numa_scan_period, p->numa_scan_period_max);
 	}
 
 	next_scan = now + msecs_to_jiffies(p->numa_scan_period);
@@ -3286,6 +3333,7 @@ retry_pids:
 	vma_iter_init(&vmi, mm, start);
 	vma = vma_next(&vmi);
 	if (!vma) {
+		pr_info("reset_ptenuma_scan1\n");
 		reset_ptenuma_scan(p);
 		start = 0;
 		vma_iter_set(&vmi, start);
@@ -3436,7 +3484,10 @@ out:
 	if (vma)
 		mm->numa_scan_offset = start;
 	else
+	{
+		pr_info("reset_ptenuma_scan2\n");
 		reset_ptenuma_scan(p);
+	}
 	mmap_read_unlock(mm);
 
 	/*
@@ -3466,6 +3517,7 @@ void init_numa_balancing(unsigned long clone_flags, struct task_struct *p)
 	p->node_stamp			= 0;
 	p->numa_scan_seq		= mm ? mm->numa_scan_seq : 0;
 	p->numa_scan_period		= sysctl_numa_balancing_scan_delay;
+	pr_info("#6: %s: curr_period %u,", p->comm, p->numa_scan_period);
 	p->numa_migrate_retry		= 0;
 	/* Protect against double add, see task_tick_numa and task_numa_work */
 	p->numa_work.next		= &p->numa_work;
@@ -3522,8 +3574,10 @@ static void task_tick_numa(struct rq *rq, struct task_struct *curr)
 	period = (u64)curr->numa_scan_period * NSEC_PER_MSEC;
 
 	if (now > curr->node_stamp + period) {
-		if (!curr->node_stamp)
+		if (!curr->node_stamp) {
 			curr->numa_scan_period = task_scan_start(curr);
+			pr_info("#5: %s: curr_period %u,", curr->comm, curr->numa_scan_period);
+		}
 		curr->node_stamp += period;
 
 		if (!time_before(jiffies, curr->mm->numa_next_scan))
@@ -3561,8 +3615,11 @@ static void update_scan_period(struct task_struct *p, int new_cpu)
 			src_nid != p->numa_preferred_nid))
 			return;
 	}
-
+	if (p->numa_scan_period) {
+		pr_info("#4: %s: prev_period %u,", p->comm, p->numa_scan_period);
+	}
 	p->numa_scan_period = task_scan_start(p);
+	pr_info("#4: %s: curr_period %u,", p->comm, p->numa_scan_period);
 }
 
 #else

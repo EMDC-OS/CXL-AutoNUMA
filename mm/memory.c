@@ -4902,12 +4902,17 @@ static vm_fault_t do_fault(struct vm_fault *vmf)
 int numa_migrate_prep(struct folio *folio, struct vm_area_struct *vma,
 		      unsigned long addr, int page_nid, int *flags)
 {
+	struct mem_cgroup *memcg;
+	memcg = get_mem_cgroup_from_current();
+
 	folio_get(folio);
 
 	/* Record the current PID acceesing VMA */
 	vma_set_access_pid_bit(vma);
 
 	count_vm_numa_event(NUMA_HINT_FAULTS);
+	atomic_long_inc(&memcg->memcg_numa_hint_faults);
+
 	if (page_nid == numa_node_id()) {
 		count_vm_numa_event(NUMA_HINT_FAULTS_LOCAL);
 		*flags |= TNF_FAULT_LOCAL;
