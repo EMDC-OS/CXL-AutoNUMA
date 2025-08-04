@@ -336,8 +336,19 @@ struct mem_cgroup {
 #endif
 
 #ifdef CONFIG_NUMA_BALANCING
-	atomic_long_t memcg_numa_hint_faults;
 	atomic_long_t memcg_numa_hint_faults_hot;
+	atomic_long_t memcg_numa_hint_faults_lower_tier;
+	
+	/* Workload pattern detection */
+	struct {
+		unsigned long hot_ratio_history[5];  /* Last 5 measurements */
+		unsigned int history_index;
+		unsigned long last_hot_ratio;
+		unsigned long pattern_change_threshold;  /* % change to trigger policy adjustment */
+		unsigned long stable_period_count;
+		unsigned long aggressive_period_count;
+		bool is_aggressive_mode;
+	} workload_pattern;
 #endif
 
 	struct mem_cgroup_per_node *nodeinfo[];

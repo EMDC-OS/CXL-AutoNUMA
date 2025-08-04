@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  *  linux/mm/memory.c
@@ -4911,7 +4910,11 @@ int numa_migrate_prep(struct folio *folio, struct vm_area_struct *vma,
 	vma_set_access_pid_bit(vma);
 
 	count_vm_numa_event(NUMA_HINT_FAULTS);
-	atomic_long_inc(&memcg->memcg_numa_hint_faults);
+
+	/* Count hint faults on lower tier memory */
+	if (!node_is_toptier(page_nid)) {
+		atomic_long_inc(&memcg->memcg_numa_hint_faults_lower_tier);
+	}
 
 	if (page_nid == numa_node_id()) {
 		count_vm_numa_event(NUMA_HINT_FAULTS_LOCAL);

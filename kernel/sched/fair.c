@@ -1874,6 +1874,12 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 		}
 
 		def_th = sysctl_numa_balancing_hot_threshold;
+		
+		/* Apply dynamic threshold adjustment based on workload pattern */
+		if (memcg) {
+			def_th = get_adjusted_threshold(memcg, def_th);
+		}
+		
 		promotion_throughput = sysctl_numa_balancing_promote_throughput << \
 			(20 - PAGE_SHIFT);
 		
@@ -3174,6 +3180,95 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	p->numa_faults_locality[local] += pages;
 }
 
+/*
+ * Analyze workload pattern changes and adjust migration policy accordingly
+ */
+static void analyze_workload_pattern(struct mem_cgroup *memcg, unsigned long current_hot_ratio)
+{
+	struct mem_cgroup_workload_pattern *pattern = &memcg->workload_pattern;
+	unsigned long avg_ratio = 0;
+	unsigned long ratio_change = 0;
+	int i;
+	
+	/* Store current ratio in history */
+	pattern->hot_ratio_history[pattern->history_index] = current_hot_ratio;
+	pattern->history_index = (pattern->history_index + 1) % 5;
+	
+	/* Calculate average ratio from history */
+	for (i = 0; i < 5; i++) {
+		avg_ratio += pattern->hot_ratio_history[i];
+	}
+	avg_ratio /= 5;
+	
+	/* Calculate change from last measurement */
+	if (pattern->last_hot_ratio > 0) {
+		if (current_hot_ratio > pattern->last_hot_ratio) {
+			ratio_change = ((current_hot_ratio - pattern->last_hot_ratio) * 100) / pattern->last_hot_ratio;
+		} else {
+			ratio_change = ((pattern->last_hot_ratio - current_hot_ratio) * 100) / pattern->last_hot_ratio;
+		}
+	}
+	
+	/* Detect pattern changes */
+	if (ratio_change > pattern->pattern_change_threshold) {
+		/* Significant change detected - switch to aggressive mode */
+		if (!pattern->is_aggressive_mode) {
+			pattern->is_aggressive_mode = true;
+			pattern->aggressive_period_count = 0;
+			pr_info("Workload pattern changed: switching to aggressive migration policy (higher threshold, change: %lu%%)", ratio_change);
+		}
+		pattern->aggressive_period_count++;
+		pattern->stable_period_count = 0;
+	} else {
+		/* Stable pattern - consider switching to conservative mode */
+		pattern->stable_period_count++;
+		if (pattern->is_aggressive_mode && pattern->stable_period_count > 3) {
+			pattern->is_aggressive_mode = false;
+			pattern->stable_period_count = 0;
+			pr_info("Workload pattern stabilized: switching to conservative migration policy (lower threshold)");
+		}
+	}
+	
+	pattern->last_hot_ratio = current_hot_ratio;
+}
+
+/*
+ * Get adjusted threshold based on workload pattern
+ */
+static unsigned int get_adjusted_threshold(struct mem_cgroup *memcg, unsigned int base_threshold)
+{
+	struct mem_cgroup_workload_pattern *pattern = &memcg->workload_pattern;
+	unsigned int adjusted_threshold = base_threshold;
+	
+	if (pattern->is_aggressive_mode) {
+		adjusted_threshold = base_threshold * 2;
+		if (adjusted_threshold > 2000)
+			adjusted_threshold = 2000;
+	} else {
+		adjusted_threshold = base_threshold / 2;  
+		if (adjusted_threshold < 100) 
+			adjusted_threshold = 100;
+	}
+	
+	return adjusted_threshold;
+}
+
+/*
+ * Initialize workload pattern detection for a memcg
+ */
+static void init_workload_pattern_detection(struct mem_cgroup *memcg)
+{
+	struct mem_cgroup_workload_pattern *pattern = &memcg->workload_pattern;
+	
+	memset(pattern->hot_ratio_history, 0, sizeof(pattern->hot_ratio_history));
+	pattern->history_index = 0;
+	pattern->last_hot_ratio = 0;
+	pattern->pattern_change_threshold = 20;  /* 20% change threshold */
+	pattern->stable_period_count = 0;
+	pattern->aggressive_period_count = 0;
+	pattern->is_aggressive_mode = false;
+}
+
 static void reset_ptenuma_scan(struct task_struct *p)
 {
 	struct mem_cgroup *memcg;
@@ -3182,16 +3277,41 @@ static void reset_ptenuma_scan(struct task_struct *p)
 
 	memcg = get_mem_cgroup_from_current();
 
-	long hfcrg = 0;
 	long hfhotcrg = 0;
+	long hflowercrg = 0;
 	int crgid = 0;
 	if (memcg) {
-		hfcrg = atomic_long_read(&memcg->memcg_numa_hint_faults);
 		hfhotcrg = atomic_long_read(&memcg->memcg_numa_hint_faults_hot);
+		hflowercrg = atomic_long_read(&memcg->memcg_numa_hint_faults_lower_tier);
 		crgid = memcg->id.id;
 	}
 
-	 pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u, cgrid=%d, hfcrg=%ld, hfhotcrg=%ld, pte=%lu\n", p->pid, p->comm, p->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max, crgid, hfcrg, hfhotcrg, numa_pte_updates);
+	 pr_info("NUMA scan reset: pid=%d, comm=%s, seq=%d, period=%u, max=%u, cgrid=%d, hfhotcrg=%ld, hflowercrg=%ld, pte=%lu\n", p->pid, p->comm, p->numa_scan_seq, p->numa_scan_period, p->numa_scan_period_max, crgid, hfhotcrg, hflowercrg, numa_pte_updates);
+	
+	/* Calculate hot page ratio in lower tier memory and analyze workload pattern */
+	if (hflowercrg > 0) {
+		unsigned long hot_ratio = (hfhotcrg * 100) / hflowercrg;
+		pr_info("Lower tier hot page ratio: %lu%% (%ld/%ld)\n", hot_ratio, hfhotcrg, hflowercrg);
+		
+		/* Initialize workload pattern detection if not done yet */
+		if (memcg && memcg->workload_pattern.pattern_change_threshold == 0) {
+			init_workload_pattern_detection(memcg);
+		}
+		
+		/* Analyze workload pattern and adjust policy */
+		if (memcg) {
+			analyze_workload_pattern(memcg, hot_ratio);
+			
+			/* Log current policy mode */
+			if (memcg->workload_pattern.is_aggressive_mode) {
+				pr_info("Current policy: AGGRESSIVE (periods: %lu)", 
+					memcg->workload_pattern.aggressive_period_count);
+			} else {
+				pr_info("Current policy: CONSERVATIVE (stable periods: %lu)", 
+					memcg->workload_pattern.stable_period_count);
+			}
+		}
+	}
 	
 	struct numa_group *ng;
 	ng = deref_curr_numa_group(p);
@@ -3216,8 +3336,13 @@ static void reset_ptenuma_scan(struct task_struct *p)
 	 */
 	
 	if (memcg) {
-		atomic_long_set(&memcg->memcg_numa_hint_faults, 0);
 		atomic_long_set(&memcg->memcg_numa_hint_faults_hot, 0);
+		atomic_long_set(&memcg->memcg_numa_hint_faults_lower_tier, 0);
+		
+		/* Reset workload pattern detection if needed */
+		if (memcg->workload_pattern.pattern_change_threshold == 0) {
+			init_workload_pattern_detection(memcg);
+		}
 	}
 }
 
